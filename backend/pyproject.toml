@@ -1,0 +1,52 @@
+[project]
+name = "smarthome-security-backend"
+version = "0.2.0"
+description = "AI-Powered Smart Home Security and Automated Access Management System - backend"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers"
+# Deprecated API use by OUR code is an error. The module field is a regex
+# matched against the module the warning is attributed to, so deprecations
+# raised inside third-party packages (FastAPI, SQLAlchemy, Alembic, pytest
+# plugins) are reported but do not fail the suite.
+filterwarnings = [
+    'error::DeprecationWarning:app\.',
+    'error::DeprecationWarning:tests\.',
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "C4", "SIM"]
+ignore = [
+    "S101",  # assert is the correct tool in tests
+]
+
+[tool.ruff.lint.isort]
+# The local alembic/ directory holds migration scripts, not the library, so
+# ruff would otherwise group `from alembic import ...` with first-party code.
+known-third-party = ["alembic"]
+
+[tool.ruff.lint.per-file-ignores]
+# Hardcoded test credentials are intentional in a test suite.
+"tests/*" = ["S105", "S106"]
+# SQLAlchemy forward references must stay quoted. The referenced classes are
+# imported only under TYPE_CHECKING, so unquoting them would raise NameError
+# when SQLAlchemy resolves Mapped[...] annotations at mapper configuration.
+"app/models/*" = ["UP037"]
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_ignores = false
+ignore_missing_imports = true
+check_untyped_defs = true

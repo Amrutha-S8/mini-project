@@ -1,0 +1,29 @@
+# Secrets and local configuration: never commit
+.env
+.env.*
+!.env.example
+ai_gate.json
+
+# Local databases and runtime data
+*.db
+*.db-wal
+*.db-shm
+backend/data/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+backend/wheels/
+backend/requirements.lock.txt.tmp
+
+# Node
+node_modules/
+dist/
+
+# Local backups and downloads (kept outside Git)
+backup/
+downloads/

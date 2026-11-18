@@ -1,0 +1,22 @@
+.env
+*.db
+*.db-wal
+*.db-shm
+data/
+wheels/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Offline wheelhouse: the build script writes these at backend/ root, and
+# none of them may reach Git. requirements.lock.txt is deliberately NOT
+# ignored; it is committed so installs are reproducible.
+wheelhouse/
+wheelhouse-*.tar.gz
+wheelhouse-*.tar.gz.sha256
+wheels/
+.verify-*/
