@@ -68,7 +68,7 @@ $missing = @($required | Where-Object { -not (Test-Path (Join-Path $ProjectRoot 
 if ($missing.Count -eq 0) {
     Add-Result "PASS" "Project structure" "all $($required.Count) expected files found"
 } else {
-    Add-Result "FAIL" "Project structure" ("missing: " + ($missing -join ", ") + ". Extract the whole backup into one folder and run this script from that folder.")
+    Add-Result "FAIL" "Project structure" ("missing: " + ($missing -join ", ") + ". Clone the whole repository (guide, Step 4) and run this script from the project folder.")
 }
 
 # --- 2. Python available on this computer ---------------------------------------
@@ -153,7 +153,7 @@ if (Test-Path $envFile) {
     }
     $secret = $values["SECRET_KEY"]
     if (-not $secret) {
-        Add-Result "FAIL" "SECRET_KEY set in backend\.env" "empty. Generate one (see the guide, step 7) and paste it after SECRET_KEY="
+        Add-Result "FAIL" "SECRET_KEY set in backend\.env" "empty. Generate one (see the guide, Steps 17-18) and paste it after SECRET_KEY="
     } elseif ($secret.Length -lt 32) {
         Add-Result "FAIL" "SECRET_KEY set in backend\.env" "too short ($($secret.Length) characters; at least 32 are required). The value is not shown."
     } else {
@@ -177,7 +177,7 @@ if (Test-Path $dbPath) {
     $size = (Get-Item $dbPath).Length
     Add-Result "PASS" "Database file" "$dbPath ($size bytes)"
 } else {
-    Add-Result "BLOCKED" "Database file" "$dbPath does not exist yet. It is created by: python -m alembic upgrade head"
+    Add-Result "BLOCKED" "Database file" "$dbPath does not exist yet. Phase 1 uses a separate test database (guide, Part E); the real database is created in Phase 2."
 }
 
 # --- 7. Alembic configuration ---------------------------------------------------------------
@@ -235,7 +235,7 @@ if ($CheckServer) {
             if ($r.status -eq "ok") { Add-Result "PASS" "GET $ep" $detail }
             else { Add-Result "FAIL" "GET $ep" $detail }
         } catch {
-            Add-Result "BLOCKED" "GET $ep" "no answer from $ServerUrl. Start the backend in another window first (guide, step 12)."
+            Add-Result "BLOCKED" "GET $ep" "no answer from $ServerUrl. Start the backend in another window first (guide, Step 27)."
         }
     }
 } else {
