@@ -7,7 +7,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { FEATURES, SESSION_ENDPOINTS, featureRoles, type Feature } from "./features.ts";
+import {
+  FEATURES,
+  PROVIDER_ENDPOINTS,
+  SESSION_ENDPOINTS,
+  featureRoles,
+  type Feature,
+} from "./features.ts";
 import { PAGES } from "./routes.ts";
 import { backendRoutes } from "../test-support/backendSource.ts";
 
@@ -33,17 +39,40 @@ test("every available feature uses an endpoint that exists in the backend", () =
 });
 
 test("UI roles match the backend guard of each endpoint", () => {
-  const guardOf = new Map(routes.map((r) => [key(r.method, r.path), r.guard]));
+  const routeOf = new Map(routes.map((r) => [key(r.method, r.path), r]));
   for (const [page, name, f] of all) {
     if (f.status !== "available") continue;
-    const guard = guardOf.get(key(f.endpoint.method, f.endpoint.path));
+    const route = routeOf.get(key(f.endpoint.method, f.endpoint.path));
     const roles = featureRoles(f);
-    if (guard === "admin") {
+    if (route?.guard === "admin") {
       assert.deepEqual(roles, ["admin"], `${page}.${name} is admin-only in the backend`);
-    } else if (roles !== null) {
-      assert.ok(roles.length === 3, `${page}.${name}: backend allows every signed-in role`);
+    } else if (route && roles !== null) {
+      assert.deepEqual(
+        [...roles].sort(),
+        route.roles,
+        `${page}.${name}: UI roles must equal the backend's (${route.roles.join(", ")})`,
+      );
     }
   }
+});
+
+test("provider webhooks are the only extra public routes", () => {
+  const publicRoutes = routes.filter((r) => r.guard === "public").map((r) => key(r.method, r.path));
+  const allowed = new Set([
+    ...SESSION_ENDPOINTS.map((e) => key(e.method, e.path)),
+    ...PROVIDER_ENDPOINTS.map((e) => key(e.method, e.path)),
+    "GET /health/ready",
+  ]);
+  for (const r of publicRoutes) assert.ok(allowed.has(r), `${r} is public`);
+});
+
+test("role-filtered routes are parsed from ensure_role", () => {
+  const rolesOf = (m: string, p: string) =>
+    routes.find((r) => key(r.method, r.path) === key(m, p))?.roles;
+  assert.deepEqual(rolesOf("GET", "/members"), ["admin", "member"]);
+  assert.deepEqual(rolesOf("GET", "/incidents"), ["admin", "viewer"]);
+  assert.deepEqual(rolesOf("GET", "/events/access"), ["admin", "member", "viewer"]);
+  assert.deepEqual(rolesOf("PATCH", "/incidents/{id}"), ["admin"]);
 });
 
 test("every backend route is used by a feature or by the session", () => {
@@ -52,6 +81,7 @@ test("every backend route is used by a feature or by the session", () => {
       f.status === "available" ? [key(f.endpoint.method, f.endpoint.path)] : [],
     ),
     ...SESSION_ENDPOINTS.map((e) => key(e.method, e.path)),
+    ...PROVIDER_ENDPOINTS.map((e) => key(e.method, e.path)),
   ]);
   for (const r of routes)
     assert.ok(used.has(key(r.method, r.path)), `${r.method} ${r.path} unused`);

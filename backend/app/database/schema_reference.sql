@@ -272,6 +272,8 @@ CREATE TABLE IF NOT EXISTS incidents (
     assigned_to_user_id         INTEGER,
     resolved_by_user_id         INTEGER,
     resolution_notes            TEXT,
+    acknowledged_at             DATETIME,                 -- migration 0005
+    acknowledged_by_user_id     INTEGER,                  -- migration 0005, no FK (ADD COLUMN)
     attack_chain                TEXT,
     attack_chain_generated_at   DATETIME,
     ai_summary                  TEXT,
@@ -712,4 +714,115 @@ CREATE TRIGGER IF NOT EXISTS trg_audit_log_guard_update BEFORE UPDATE ON audit_l
 CREATE TRIGGER IF NOT EXISTS trg_audit_log_no_delete BEFORE DELETE ON audit_log
     FOR EACH ROW
     BEGIN SELECT RAISE(ABORT, 'audit_log: delete not permitted');
+    END;
+
+-- =====================================================================
+-- Migration 0005 — suspicious activity detections and notifications
+-- (M13, M20). incidents also gains acknowledged_at and
+-- acknowledged_by_user_id (see the incidents table above).
+-- =====================================================================
+-- incident_detections: one append-only row per rule firing, with the
+-- reason and the triggering security event.
+CREATE TABLE IF NOT EXISTS incident_detections (
+    id                      INTEGER NOT NULL PRIMARY KEY,
+    incident_id             INTEGER NOT NULL,
+    security_event_id       INTEGER NOT NULL,
+    detector_rule           TEXT    NOT NULL,
+    dedupe_key              TEXT    NOT NULL,
+    severity                TEXT    NOT NULL,
+    reason                  TEXT    NOT NULL,
+    event_uids              TEXT    NOT NULL,             -- JSON list
+    detected_at             DATETIME NOT NULL,
+    recorded_at             DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_incident_detections_incident_id_incidents
+        FOREIGN KEY (incident_id) REFERENCES incidents (id),
+    CONSTRAINT fk_incident_detections_security_event_id_security_events
+        FOREIGN KEY (security_event_id) REFERENCES security_events (id),
+    CONSTRAINT ck_incident_detections_severity_valid
+        CHECK (severity IN ('info', 'low', 'medium', 'high', 'critical')),
+    CONSTRAINT ck_incident_detections_reason_length
+        CHECK (length(reason) BETWEEN 1 AND 1000),
+    CONSTRAINT ck_incident_detections_event_uids_json
+        CHECK (json_valid(event_uids))
+);
+
+CREATE INDEX IF NOT EXISTS ix_incident_detections_incident_id
+    ON incident_detections (incident_id);
+CREATE INDEX IF NOT EXISTS ix_incident_detections_security_event_id
+    ON incident_detections (security_event_id);
+CREATE INDEX IF NOT EXISTS ix_incident_detections_dedupe_key
+    ON incident_detections (dedupe_key);
+
+CREATE TRIGGER IF NOT EXISTS trg_incident_detections_guard_update BEFORE UPDATE ON incident_detections
+    FOR EACH ROW
+    BEGIN SELECT RAISE(ABORT, 'incident_detections: update not permitted');
+    END;
+
+CREATE TRIGGER IF NOT EXISTS trg_incident_detections_no_delete BEFORE DELETE ON incident_detections
+    FOR EACH ROW
+    BEGIN SELECT RAISE(ABORT, 'incident_detections: delete not permitted');
+    END;
+
+-- notifications: every homeowner notification attempt. delivered/read only
+-- with a provider message id and a provider-reported delivery time.
+CREATE TABLE IF NOT EXISTS notifications (
+    id                      INTEGER NOT NULL PRIMARY KEY,
+    incident_id             INTEGER NOT NULL,
+    channel                 TEXT    NOT NULL,
+    provider                TEXT    NOT NULL,
+    recipient_masked        TEXT,
+    trigger_reason          TEXT    NOT NULL,
+    status                  TEXT    NOT NULL DEFAULT 'pending',
+    provider_message_id     TEXT,
+    provider_status         TEXT,
+    http_status             INTEGER,
+    error_code              TEXT,
+    error_message           TEXT,
+    created_at              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    sent_at                 DATETIME,
+    delivered_at            DATETIME,
+    failed_at               DATETIME,
+    status_checked_at       DATETIME,
+    CONSTRAINT fk_notifications_incident_id_incidents
+        FOREIGN KEY (incident_id) REFERENCES incidents (id),
+    CONSTRAINT ck_notifications_channel_valid
+        CHECK (channel IN ('whatsapp', 'sms')),
+    CONSTRAINT ck_notifications_provider_valid
+        CHECK (provider IN ('meta_whatsapp_cloud', 'twilio')),
+    CONSTRAINT ck_notifications_status_valid
+        CHECK (status IN ('pending', 'not_configured', 'send_failed', 'accepted', 'sent', 'delivered', 'read', 'failed')),
+    CONSTRAINT ck_notifications_trigger_reason_valid
+        CHECK (trigger_reason IN ('created', 'escalated', 'fallback', 'manual')),
+    CONSTRAINT ck_notifications_delivery_confirmed_by_provider
+        CHECK (status NOT IN ('delivered', 'read') OR (provider_message_id IS NOT NULL AND delivered_at IS NOT NULL)),
+    CONSTRAINT ck_notifications_accepted_has_provider_id
+        CHECK (status NOT IN ('accepted', 'sent') OR provider_message_id IS NOT NULL)
+);
+
+CREATE INDEX IF NOT EXISTS ix_notifications_incident_id
+    ON notifications (incident_id);
+CREATE INDEX IF NOT EXISTS ix_notifications_status
+    ON notifications (status);
+CREATE INDEX IF NOT EXISTS ix_notifications_provider_message_id
+    ON notifications (provider_message_id);
+
+CREATE TRIGGER IF NOT EXISTS trg_notifications_guard_update BEFORE UPDATE ON notifications
+    FOR EACH ROW WHEN NEW.id IS NOT OLD.id
+        OR NEW.incident_id IS NOT OLD.incident_id
+        OR NEW.channel IS NOT OLD.channel
+        OR NEW.provider IS NOT OLD.provider
+        OR NEW.recipient_masked IS NOT OLD.recipient_masked
+        OR NEW.trigger_reason IS NOT OLD.trigger_reason
+        OR NEW.created_at IS NOT OLD.created_at
+        OR (OLD.provider_message_id IS NOT NULL AND NEW.provider_message_id IS NOT OLD.provider_message_id)
+        OR (OLD.sent_at IS NOT NULL AND NEW.sent_at IS NOT OLD.sent_at)
+        OR (OLD.delivered_at IS NOT NULL AND NEW.delivered_at IS NOT OLD.delivered_at)
+        OR (OLD.failed_at IS NOT NULL AND NEW.failed_at IS NOT OLD.failed_at)
+    BEGIN SELECT RAISE(ABORT, 'notifications: update not permitted');
+    END;
+
+CREATE TRIGGER IF NOT EXISTS trg_notifications_no_delete BEFORE DELETE ON notifications
+    FOR EACH ROW
+    BEGIN SELECT RAISE(ABORT, 'notifications: delete not permitted');
     END;

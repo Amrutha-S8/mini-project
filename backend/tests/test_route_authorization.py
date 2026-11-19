@@ -26,6 +26,11 @@ PUBLIC_ROUTES = {
     ("health", "get", "/health/ready"),
     ("auth", "post", "/login"),
     ("auth", "post", "/refresh"),
+    # Provider webhooks: no user token, but every call must carry a valid
+    # provider signature (tests/test_api_monitoring_notifications.py).
+    ("notifications", "get", "/webhooks/whatsapp"),
+    ("notifications", "post", "/webhooks/whatsapp"),
+    ("notifications", "post", "/webhooks/twilio"),
 }
 
 #: (module, method, path) that must require the admin role.
@@ -35,6 +40,16 @@ ADMIN_ROUTES = {
     ("members", "patch", "/{member_id}"),
     ("members", "post", "/{member_id}/deactivate"),
     ("members", "post", "/{member_id}/revoke"),
+    ("incidents", "patch", "/{incident_id}"),
+    ("incidents", "post", "/{incident_id}/acknowledge"),
+    ("incidents", "post", "/{incident_id}/investigate"),
+    ("incidents", "post", "/{incident_id}/resolve"),
+    ("incidents", "get", "/{incident_id}/notifications"),
+    ("incidents", "post", "/{incident_id}/notify"),
+    ("monitoring", "post", "/events"),
+    ("notifications", "get", ""),
+    ("notifications", "get", "/channels"),
+    ("notifications", "post", "/{notification_id}/refresh"),
 }
 
 AUTH_ANNOTATIONS = {"CurrentUser", "AdminUser"}

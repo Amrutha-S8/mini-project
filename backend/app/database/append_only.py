@@ -200,6 +200,48 @@ UPDATE_RULES["audit_log"] = UpdateRule(
     clearable=("actor_user_id",),
 )
 
+#: Migration 0005: a detection finding is evidence and never changes.
+UPDATE_RULES["incident_detections"] = UpdateRule(
+    forbid_all=True,
+    immutable=(
+        "id",
+        "incident_id",
+        "security_event_id",
+        "detector_rule",
+        "dedupe_key",
+        "severity",
+        "reason",
+        "event_uids",
+        "detected_at",
+        "recorded_at",
+    ),
+)
+
+#: Migration 0005: a notification attempt keeps who/what/where fixed; only the
+#: provider-reported progress changes, and identifiers and timestamps that
+#: record a provider fact can be set once and never rewritten.
+UPDATE_RULES["notifications"] = UpdateRule(
+    immutable=(
+        "id",
+        "incident_id",
+        "channel",
+        "provider",
+        "recipient_masked",
+        "trigger_reason",
+        "created_at",
+    ),
+    set_once=("provider_message_id", "sent_at", "delivered_at", "failed_at"),
+    mutable=(
+        "status",
+        "provider_status",
+        "http_status",
+        "error_code",
+        "error_message",
+        "status_checked_at",
+        "updated_at",
+    ),
+)
+
 #: Tables whose rows can never be deleted. ``incidents`` is included because
 #: security history must not be purged (SR-AUDIT-08); it has no UPDATE guard
 #: because cases are mutable by design.
@@ -212,6 +254,8 @@ NO_DELETE: tuple[str, ...] = (
     "workflow_executions",
     "retention_extensions",
     "audit_log",
+    "incident_detections",
+    "notifications",
 )
 
 #: Integrity triggers added by migration 0003 (retention policy). They run

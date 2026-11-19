@@ -36,22 +36,34 @@ export type Feature =
   | { readonly status: "browser_only"; readonly note: string }
   | { readonly status: "unavailable"; readonly reason: string };
 
-const NO_EVENTS_API =
-  "No API reads security, access or visitor events yet. The tables exist (migration 0002) but are not exposed.";
+const NO_VISITOR_API =
+  "No API reads visitor events yet. The table exists (migration 0002) but is not exposed.";
+const NO_ANALYTICS_API =
+  "Trend analytics endpoints are not built yet. The dashboard summary shows the current counts.";
 const NO_RECOGNITION =
-  "Face recognition is not connected: the recognition service and the AccessEngine endpoint are not built (InsightFace licence pending, DD-04).";
+  "Face recognition is not connected: the YuNet + SFace recognition service and the AccessEngine endpoint are not built yet.";
+const SUMMARY: Endpoint = { method: "GET", path: "/dashboard/summary" };
 const AI_OFF =
   "The AI assistant is disabled (AI_ENABLED=false). No AI endpoint exists yet, and it stays off until the security gate checks are recorded.";
-const NO_NOTIFY = "Notification delivery (email, WhatsApp, SMS) is not built yet.";
+const NOTIFY_IN_ENV =
+  "WhatsApp and SMS credentials are set in backend/.env only, never in the browser. The channel status shows what is missing.";
 
 export const FEATURES = {
   dashboard: {
     system_status: { status: "available", endpoint: { method: "GET", path: "/health/ready" } },
-    security_status: { status: "unavailable", reason: NO_EVENTS_API },
-    total_events: { status: "unavailable", reason: NO_EVENTS_API },
-    recent_activity: { status: "unavailable", reason: NO_EVENTS_API },
-    access_overview: { status: "unavailable", reason: NO_EVENTS_API },
-    notifications: { status: "unavailable", reason: NO_NOTIFY },
+    security_status: { status: "available", endpoint: SUMMARY, action: "dashboard.summary" },
+    total_events: { status: "available", endpoint: SUMMARY, action: "dashboard.summary" },
+    recent_activity: {
+      status: "available",
+      endpoint: { method: "GET", path: "/events/access" },
+      action: "events.access",
+    },
+    access_overview: { status: "available", endpoint: SUMMARY, action: "dashboard.summary" },
+    notifications: {
+      status: "available",
+      endpoint: { method: "GET", path: "/notifications" },
+      action: "notifications.list",
+    },
   },
   live_monitoring: {
     webcam_preview: {
@@ -97,17 +109,67 @@ export const FEATURES = {
       status: "unavailable",
       reason: "Face enrolment needs the embedding service (Day 3), which is not built.",
     },
-    visitors: { status: "unavailable", reason: NO_EVENTS_API },
+    visitors: { status: "unavailable", reason: NO_VISITOR_API },
     permissions: {
       status: "unavailable",
       reason: "The permissions table and API arrive with Day 4 persistence.",
     },
   },
   security_events: {
-    event_list: { status: "unavailable", reason: NO_EVENTS_API },
+    event_list: {
+      status: "available",
+      endpoint: { method: "GET", path: "/events/security" },
+      action: "events.security",
+    },
+    access_history: {
+      status: "available",
+      endpoint: { method: "GET", path: "/events/access" },
+      action: "events.access",
+    },
     incident_timeline: {
-      status: "unavailable",
-      reason: "Incidents are reconstructed in the core but no API returns them yet.",
+      status: "available",
+      endpoint: { method: "GET", path: "/incidents" },
+      action: "incidents.list",
+    },
+    incident_detail: {
+      status: "available",
+      endpoint: { method: "GET", path: "/incidents/{id}" },
+      action: "incidents.view",
+    },
+    incident_update: {
+      status: "available",
+      endpoint: { method: "PATCH", path: "/incidents/{id}" },
+      action: "incidents.update",
+    },
+    incident_acknowledge: {
+      status: "available",
+      endpoint: { method: "POST", path: "/incidents/{id}/acknowledge" },
+      action: "incidents.acknowledge",
+    },
+    incident_investigate: {
+      status: "available",
+      endpoint: { method: "POST", path: "/incidents/{id}/investigate" },
+      action: "incidents.investigate",
+    },
+    incident_resolve: {
+      status: "available",
+      endpoint: { method: "POST", path: "/incidents/{id}/resolve" },
+      action: "incidents.resolve",
+    },
+    incident_notifications: {
+      status: "available",
+      endpoint: { method: "GET", path: "/incidents/{id}/notifications" },
+      action: "incidents.notifications",
+    },
+    incident_notify: {
+      status: "available",
+      endpoint: { method: "POST", path: "/incidents/{id}/notify" },
+      action: "incidents.notify",
+    },
+    activity_record_submit: {
+      status: "available",
+      endpoint: { method: "POST", path: "/monitoring/events" },
+      action: "monitoring.submit",
     },
     evidence_refs: {
       status: "unavailable",
@@ -119,9 +181,9 @@ export const FEATURES = {
     suggested_questions: { status: "unavailable", reason: AI_OFF },
   },
   analytics: {
-    trends: { status: "unavailable", reason: NO_EVENTS_API },
-    access_distribution: { status: "unavailable", reason: NO_EVENTS_API },
-    visitor_activity: { status: "unavailable", reason: NO_EVENTS_API },
+    trends: { status: "unavailable", reason: NO_ANALYTICS_API },
+    access_distribution: { status: "unavailable", reason: NO_ANALYTICS_API },
+    visitor_activity: { status: "unavailable", reason: NO_VISITOR_API },
   },
   settings: {
     profile_view: {
@@ -140,9 +202,17 @@ export const FEATURES = {
       status: "unavailable",
       reason: "Listing users and changing roles has no endpoint.",
     },
-    notification_preferences: { status: "unavailable", reason: NO_NOTIFY },
-    whatsapp: { status: "unavailable", reason: NO_NOTIFY },
-    sms: { status: "unavailable", reason: NO_NOTIFY },
+    notification_preferences: { status: "unavailable", reason: NOTIFY_IN_ENV },
+    notification_channels: {
+      status: "available",
+      endpoint: { method: "GET", path: "/notifications/channels" },
+      action: "notifications.channels",
+    },
+    sms_status_refresh: {
+      status: "available",
+      endpoint: { method: "POST", path: "/notifications/{id}/refresh" },
+      action: "notifications.refresh",
+    },
     ai_settings: { status: "unavailable", reason: AI_OFF },
     retention_policy: {
       status: "unavailable",
@@ -155,6 +225,16 @@ export const FEATURES = {
     backup: { status: "unavailable", reason: "No backup endpoint exists." },
   },
 } as const satisfies Record<PageId, Record<string, Feature>>;
+
+/**
+ * Called by WhatsApp and Twilio, never by the UI. Each verifies the provider's
+ * signature (backend/app/api/v1/notifications.py).
+ */
+export const PROVIDER_ENDPOINTS: readonly Endpoint[] = [
+  { method: "GET", path: "/notifications/webhooks/whatsapp" },
+  { method: "POST", path: "/notifications/webhooks/whatsapp" },
+  { method: "POST", path: "/notifications/webhooks/twilio" },
+];
 
 /** Endpoints called by the session itself rather than by a page feature. */
 export const SESSION_ENDPOINTS: readonly Endpoint[] = [

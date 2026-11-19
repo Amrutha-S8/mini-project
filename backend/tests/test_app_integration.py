@@ -22,57 +22,16 @@ They are written now so that the moment the dependencies install, running
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from pathlib import Path
 from typing import Any
 
 import pytest
 
-from tests.conftest import requires_stack
+from tests.conftest import ADMIN_PAYLOAD, requires_stack
 
 pytestmark = requires_stack
 
-
-@pytest.fixture
-def app_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
-    """TestClient bound to a temporary database.
-
-    Imports happen inside the fixture so collection does not fail when the
-    stack is absent.
-    """
-    from fastapi.testclient import TestClient
-
-    import app.models  # noqa: F401  (registers tables on Base.metadata)
-    from app.core.config import Settings
-    from app.database.base import Base
-    from app.database.session import create_writer_engine
-    from app.main import create_app
-
-    monkeypatch.setenv("APP_ENV", "development")
-    monkeypatch.setenv("SECRET_KEY", "test-secret-key-at-least-32-characters-long")
-    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "test.db"))
-
-    settings = Settings()
-    engine = create_writer_engine(settings)
-    Base.metadata.create_all(engine)
-    from sqlalchemy.orm import Session
-
-    from app.services.auth_service import create_first_admin
-
-    with Session(engine) as db:
-        create_first_admin(
-            db,
-            email=ADMIN_PAYLOAD["email"],
-            password=ADMIN_PAYLOAD["password"],
-            full_name=ADMIN_PAYLOAD["full_name"],
-        )
-        db.commit()
-    engine.dispose()
-
-    app = create_app(settings)
-    with TestClient(app) as client:
-        yield client
-
+# ``app_client`` (a TestClient on a fresh temporary database with one admin)
+# is defined in tests/conftest.py.
 
 V1 = "/api/v1"
 
@@ -81,13 +40,6 @@ USER_PAYLOAD = {
     "email": "owner@example.com",
     "password": GOOD_PASSWORD,
     "full_name": "Household Owner",
-}
-
-
-ADMIN_PAYLOAD = {
-    "email": "admin@example.com",
-    "password": "Adm1n-Household-Pass",
-    "full_name": "Household Admin",
 }
 
 
@@ -477,11 +429,26 @@ def test_app_uses_the_settings_it_was_created_with(app_client: Any) -> None:
     if app_settings.secret_key == process_settings.secret_key:
         pytest.skip("app and process settings share a secret; cannot distinguish")
 
-    user_id = str(_register_and_login(app_client)["user"]["id"])
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
 
-    good = create_access_token(subject=user_id, role="viewer", settings=app_settings)
+    from app.database.session import get_writer_engine
+    from app.models.session import SessionRecord
+
+    user_id = str(_register_and_login(app_client)["user"]["id"])
+    with Session(get_writer_engine()) as db:
+        session_id = db.execute(
+            select(SessionRecord.id).where(SessionRecord.user_id == int(user_id))
+        ).scalar_one()
+
+    good = create_access_token(
+        subject=user_id, role="viewer", session_id=session_id, settings=app_settings
+    )
     stale = create_access_token(
-        subject=user_id, role="viewer", settings=process_settings
+        subject=user_id,
+        role="viewer",
+        session_id=session_id,
+        settings=process_settings,
     )
     assert (
         app_client.get(

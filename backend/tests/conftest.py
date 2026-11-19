@@ -16,6 +16,7 @@ import importlib.util
 import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -87,3 +88,57 @@ def sqlite_db(tmp_path: Path, schema_sql: str) -> Iterator[sqlite3.Connection]:
 def sqlite_db_path(sqlite_db: sqlite3.Connection, tmp_path: Path) -> Path:
     """Path of the database created by :func:`sqlite_db`."""
     return tmp_path / "test_smarthome.db"
+
+
+# --- API fixtures (need the approved stack) ------------------------------------
+
+#: The first admin, created in ``app_client`` through ``create_first_admin``,
+#: the same function the ``create-admin`` CLI uses.
+ADMIN_PAYLOAD = {
+    "email": "admin@example.com",
+    "password": "Adm1n-Household-Pass",
+    "full_name": "Household Admin",
+}
+
+
+@pytest.fixture
+def app_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
+    """TestClient bound to a fresh temporary database with one admin.
+
+    Imports happen inside the fixture so collection does not fail when the
+    stack is absent. Tests using it must carry the ``requires_stack`` marker.
+    """
+    from fastapi.testclient import TestClient
+    from sqlalchemy.orm import Session
+
+    import app.models  # noqa: F401  (registers tables on Base.metadata)
+    from app.core.config import Settings
+    from app.database.base import Base
+    from app.database.session import create_writer_engine
+    from app.main import create_app
+    from app.services.auth_service import create_first_admin
+
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("SECRET_KEY", "test-secret-key-at-least-32-characters-long")
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "test.db"))
+
+    settings = Settings()
+    engine = create_writer_engine(settings)
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        create_first_admin(
+            db,
+            email=ADMIN_PAYLOAD["email"],
+            password=ADMIN_PAYLOAD["password"],
+            full_name=ADMIN_PAYLOAD["full_name"],
+        )
+        db.commit()
+    engine.dispose()
+
+    from app.core.tasks import InlineTaskRunner
+
+    application = create_app(settings)
+    # Run notification jobs synchronously so tests can assert on their rows.
+    application.state.task_runner = InlineTaskRunner()
+    with TestClient(application) as client:
+        yield client

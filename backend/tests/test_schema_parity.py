@@ -33,9 +33,17 @@ MIGRATION_0001 = VERSIONS / "0001_initial_identity.py"
 MIGRATION_0002 = VERSIONS / "0002_events_incidents_workflows.py"
 MIGRATION_0003 = VERSIONS / "0003_retention_extensions.py"
 MIGRATION_0004 = VERSIONS / "0004_audit_log_append_only.py"
-MIGRATIONS = [MIGRATION_0001, MIGRATION_0002, MIGRATION_0003, MIGRATION_0004]
-HEAD_REVISION = "0004_audit_log_append_only"
+MIGRATION_0005 = VERSIONS / "0005_detections_notifications.py"
+MIGRATIONS = [
+    MIGRATION_0001,
+    MIGRATION_0002,
+    MIGRATION_0003,
+    MIGRATION_0004,
+    MIGRATION_0005,
+]
+HEAD_REVISION = "0005_detections_notifications"
 RETENTION_TABLES = {"retention_extensions"}
+MONITORING_TABLES = {"incident_detections", "notifications"}
 IDENTITY_TABLES = {"users", "family_members", "sessions", "audit_log"}
 EVENT_TABLES = {
     "access_events",
@@ -45,7 +53,7 @@ EVENT_TABLES = {
     "incident_evidence",
     "workflow_executions",
 }
-EXPECTED_TABLES = IDENTITY_TABLES | EVENT_TABLES | RETENTION_TABLES
+EXPECTED_TABLES = IDENTITY_TABLES | EVENT_TABLES | RETENTION_TABLES | MONITORING_TABLES
 
 
 def _reference_db(path: Path, sql: str | None = None) -> sqlite3.Connection:
@@ -95,6 +103,19 @@ def test_migration_0004_only_adds_audit_log_triggers() -> None:
     }
 
 
+def test_migration_0005_adds_monitoring_tables_and_incident_columns() -> None:
+    from tests.schema_tools import LATER_COLUMNS
+
+    described = describe_migration(MIGRATION_0005)
+    added = described.pop(LATER_COLUMNS, {})
+    assert described.pop("<triggers on existing tables>", {}) == {}
+    assert set(described) == MONITORING_TABLES
+    assert set(added) == {"incidents"}
+    assert set(added["incidents"]) == {"acknowledged_at", "acknowledged_by_user_id"}
+    # ADD COLUMN must stay nullable without a default (no table rebuild).
+    assert all(not notnull for _aff, notnull, _d in added["incidents"].values())
+
+
 @pytest.mark.parametrize(
     "path,revision,down",
     [
@@ -108,6 +129,11 @@ def test_migration_0004_only_adds_audit_log_triggers() -> None:
             MIGRATION_0004,
             "0004_audit_log_append_only",
             "0003_retention_extensions",
+        ),
+        (
+            MIGRATION_0005,
+            "0005_detections_notifications",
+            "0004_audit_log_append_only",
         ),
     ],
 )

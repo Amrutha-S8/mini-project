@@ -338,6 +338,26 @@ def describe_migration(path: Path) -> Schema:
             unique_node = _kw(node, "unique")
             unique = isinstance(unique_node, ast.Constant) and bool(unique_node.value)
             schema[table]["indexes"][name] = (cols, unique)
+        elif op_name == "add_column":
+            # ALTER TABLE ... ADD COLUMN on a table from an earlier migration.
+            table = _name(node.args[0])
+            column = node.args[1]
+            assert isinstance(column, ast.Call) and _attr(column) == "Column"
+            type_call = column.args[1]
+            assert isinstance(type_call, ast.Call)
+            nullable = _kw(column, "nullable")
+            notnull = isinstance(nullable, ast.Constant) and nullable.value is False
+            if _kw(column, "server_default") is None and notnull:
+                raise ValueError(f"{table}: NOT NULL ADD COLUMN needs a default")
+            if len(column.args) > 2:
+                raise ValueError(f"{table}: add_column with inline constraints")
+            schema.setdefault(LATER_COLUMNS, {}).setdefault(table, {})[
+                _name(column.args[0])
+            ] = (
+                _SA_AFFINITY[_attr(type_call)],
+                notnull,
+                _default(_kw(column, "server_default")),
+            )
     for statement in _trigger_sources(tree, upgrade):
         name, table, text = normalise_trigger(statement)
         if table in schema:
@@ -526,14 +546,27 @@ def describe_models(paths: list[Path]) -> Schema:
 #: Key under which describe_migration reports triggers it adds to tables that
 #: an earlier migration created.
 LATER_TRIGGERS = "<triggers on existing tables>"
+#: Key under which describe_migration reports ``op.add_column`` calls.
+LATER_COLUMNS = "<columns added to existing tables>"
 
 
 def describe_migrations(paths: list[Path]) -> Schema:
-    """The schema produced by applying create-only migrations in order."""
+    """The schema produced by applying the migrations in order.
+
+    Supports create_table, create_index, add_column and CREATE TRIGGER.
+    """
     combined: Schema = {}
     for path in paths:
         described = describe_migration(path)
         later = described.pop(LATER_TRIGGERS, {})
+        added = described.pop(LATER_COLUMNS, {})
+        for table, columns in added.items():
+            if table not in combined:
+                raise ValueError(f"{path.name} adds a column to unknown {table}")
+            for name, column in columns.items():
+                if name in combined[table]["columns"]:
+                    raise ValueError(f"{path.name} re-adds {table}.{name}")
+                combined[table]["columns"][name] = column
         for table, entry in described.items():
             if table in combined:
                 raise ValueError(f"{path.name} re-creates table {table}")

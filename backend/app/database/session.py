@@ -128,6 +128,16 @@ def get_writer_engine() -> Engine:
     return _writer_engine
 
 
+def new_writer_session() -> Session:
+    """A fresh read/write session for work outside a request (background jobs).
+
+    The caller commits and closes it.
+    """
+    if _WriterSession is None:
+        raise RuntimeError("engines not initialised; call init_engines() first")
+    return _WriterSession()
+
+
 def get_session() -> Iterator[Session]:
     """FastAPI dependency yielding a read/write session.
 

@@ -122,7 +122,7 @@ test("no backend response model declares a forbidden key", () => {
   }
 });
 
-test("the backend route parser sees all 13 routes", () => {
+test("the backend route parser sees all 31 routes", () => {
   const routes = backendRoutes().map((r) => `${r.method} ${r.path} ${r.guard}`);
   assert.deepEqual(
     sorted(routes),
@@ -140,6 +140,24 @@ test("the backend route parser sees all 13 routes", () => {
       "PATCH /members/{id} admin",
       "POST /members/{id}/deactivate admin",
       "POST /members/{id}/revoke admin",
+      "GET /events/access authenticated",
+      "GET /events/security authenticated",
+      "GET /incidents authenticated",
+      "GET /incidents/{id} authenticated",
+      "PATCH /incidents/{id} admin",
+      "GET /dashboard/summary authenticated",
+      "POST /incidents/{id}/acknowledge admin",
+      "POST /incidents/{id}/investigate admin",
+      "POST /incidents/{id}/resolve admin",
+      "GET /incidents/{id}/notifications admin",
+      "POST /incidents/{id}/notify admin",
+      "POST /monitoring/events admin",
+      "GET /notifications admin",
+      "GET /notifications/channels admin",
+      "POST /notifications/{id}/refresh admin",
+      "GET /notifications/webhooks/whatsapp public",
+      "POST /notifications/webhooks/whatsapp public",
+      "POST /notifications/webhooks/twilio public",
     ]),
   );
 });

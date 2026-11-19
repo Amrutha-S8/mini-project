@@ -112,14 +112,16 @@ def create_access_token(
     *,
     subject: str,
     role: str,
+    session_id: int,
     settings: Settings,
     expires_delta: timedelta | None = None,
 ) -> str:
     """Mint a short-lived access token.
 
-    Claims include ``sub``, ``role``, ``exp``, ``iat``, ``jti`` and ``typ``
-    (SR-AUTH-09). ``typ`` prevents a refresh token being replayed as an access
-    token.
+    Claims include ``sub``, ``role``, ``sid``, ``exp``, ``iat``, ``jti`` and
+    ``typ`` (SR-AUTH-09). ``typ`` prevents a refresh token being replayed as an
+    access token. ``sid`` is the server-side session the token was issued
+    with, so logout and revocation also end the access token (finding S2).
     """
     now = datetime.now(UTC)
     expire = now + (
@@ -128,6 +130,7 @@ def create_access_token(
     payload: dict[str, Any] = {
         "sub": subject,
         "role": role,
+        "sid": str(session_id),
         "typ": TOKEN_TYPE_ACCESS,
         "iat": int(now.timestamp()),
         "exp": int(expire.timestamp()),
@@ -141,13 +144,14 @@ def decode_access_token(token: str, *, settings: Settings) -> dict[str, Any]:
 
     The accepted algorithm is pinned to the configured one, which is what
     closes algorithm-confusion and ``alg: none`` attacks. Expiry is verified by
-    PyJWT. Raises ``jwt.PyJWTError`` subclasses on any failure.
+    PyJWT. A token without ``sid`` (issued before finding S2 was fixed, or
+    forged) is rejected. Raises ``jwt.PyJWTError`` subclasses on any failure.
     """
     claims: dict[str, Any] = jwt.decode(
         token,
         settings.secret_key,
         algorithms=[settings.jwt_algorithm],
-        options={"require": ["exp", "iat", "sub"]},
+        options={"require": ["exp", "iat", "sub", "sid"]},
     )
     if claims.get("typ") != TOKEN_TYPE_ACCESS:
         raise jwt.InvalidTokenError("not an access token")

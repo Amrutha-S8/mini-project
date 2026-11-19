@@ -23,6 +23,7 @@ from app.core.errors import DomainError, generic_envelope
 from app.core.logging import configure_logging, get_logger
 from app.core.rate_limit import LoginThrottle
 from app.core.security_headers import SecurityHeadersMiddleware
+from app.core.tasks import ThreadTaskRunner
 from app.database.session import dispose_engines, init_engines
 
 logger = get_logger(__name__)
@@ -131,6 +132,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url=None if settings.is_production else "/openapi.json",
     )
     app.state.settings = settings
+    # Notifications run off the request thread. Tests replace both.
+    app.state.task_runner = ThreadTaskRunner()
+    #: None means the real HTTPS transport built from settings.
+    app.state.notification_transport = None
     app.state.login_throttle = LoginThrottle(
         ip_limit=settings.login_ip_limit,
         ip_window_seconds=settings.login_ip_window_seconds,
