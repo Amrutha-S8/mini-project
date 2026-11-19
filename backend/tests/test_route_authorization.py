@@ -35,6 +35,7 @@ ADMIN_ROUTES = {
     ("members", "patch", "/{member_id}"),
     ("members", "post", "/{member_id}/deactivate"),
     ("members", "post", "/{member_id}/revoke"),
+    ("incidents", "patch", "/{incident_id}"),
 }
 
 AUTH_ANNOTATIONS = {"CurrentUser", "AdminUser"}

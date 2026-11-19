@@ -36,10 +36,13 @@ export type Feature =
   | { readonly status: "browser_only"; readonly note: string }
   | { readonly status: "unavailable"; readonly reason: string };
 
-const NO_EVENTS_API =
-  "No API reads security, access or visitor events yet. The tables exist (migration 0002) but are not exposed.";
+const NO_VISITOR_API =
+  "No API reads visitor events yet. The table exists (migration 0002) but is not exposed.";
+const NO_ANALYTICS_API =
+  "Trend analytics endpoints are not built yet. The dashboard summary shows the current counts.";
 const NO_RECOGNITION =
-  "Face recognition is not connected: the recognition service and the AccessEngine endpoint are not built (InsightFace licence pending, DD-04).";
+  "Face recognition is not connected: the YuNet + SFace recognition service and the AccessEngine endpoint are not built yet.";
+const SUMMARY: Endpoint = { method: "GET", path: "/dashboard/summary" };
 const AI_OFF =
   "The AI assistant is disabled (AI_ENABLED=false). No AI endpoint exists yet, and it stays off until the security gate checks are recorded.";
 const NO_NOTIFY = "Notification delivery (email, WhatsApp, SMS) is not built yet.";
@@ -47,10 +50,14 @@ const NO_NOTIFY = "Notification delivery (email, WhatsApp, SMS) is not built yet
 export const FEATURES = {
   dashboard: {
     system_status: { status: "available", endpoint: { method: "GET", path: "/health/ready" } },
-    security_status: { status: "unavailable", reason: NO_EVENTS_API },
-    total_events: { status: "unavailable", reason: NO_EVENTS_API },
-    recent_activity: { status: "unavailable", reason: NO_EVENTS_API },
-    access_overview: { status: "unavailable", reason: NO_EVENTS_API },
+    security_status: { status: "available", endpoint: SUMMARY, action: "dashboard.summary" },
+    total_events: { status: "available", endpoint: SUMMARY, action: "dashboard.summary" },
+    recent_activity: {
+      status: "available",
+      endpoint: { method: "GET", path: "/events/access" },
+      action: "events.access",
+    },
+    access_overview: { status: "available", endpoint: SUMMARY, action: "dashboard.summary" },
     notifications: { status: "unavailable", reason: NO_NOTIFY },
   },
   live_monitoring: {
@@ -97,17 +104,37 @@ export const FEATURES = {
       status: "unavailable",
       reason: "Face enrolment needs the embedding service (Day 3), which is not built.",
     },
-    visitors: { status: "unavailable", reason: NO_EVENTS_API },
+    visitors: { status: "unavailable", reason: NO_VISITOR_API },
     permissions: {
       status: "unavailable",
       reason: "The permissions table and API arrive with Day 4 persistence.",
     },
   },
   security_events: {
-    event_list: { status: "unavailable", reason: NO_EVENTS_API },
+    event_list: {
+      status: "available",
+      endpoint: { method: "GET", path: "/events/security" },
+      action: "events.security",
+    },
+    access_history: {
+      status: "available",
+      endpoint: { method: "GET", path: "/events/access" },
+      action: "events.access",
+    },
     incident_timeline: {
-      status: "unavailable",
-      reason: "Incidents are reconstructed in the core but no API returns them yet.",
+      status: "available",
+      endpoint: { method: "GET", path: "/incidents" },
+      action: "incidents.list",
+    },
+    incident_detail: {
+      status: "available",
+      endpoint: { method: "GET", path: "/incidents/{id}" },
+      action: "incidents.view",
+    },
+    incident_update: {
+      status: "available",
+      endpoint: { method: "PATCH", path: "/incidents/{id}" },
+      action: "incidents.update",
     },
     evidence_refs: {
       status: "unavailable",
@@ -119,9 +146,9 @@ export const FEATURES = {
     suggested_questions: { status: "unavailable", reason: AI_OFF },
   },
   analytics: {
-    trends: { status: "unavailable", reason: NO_EVENTS_API },
-    access_distribution: { status: "unavailable", reason: NO_EVENTS_API },
-    visitor_activity: { status: "unavailable", reason: NO_EVENTS_API },
+    trends: { status: "unavailable", reason: NO_ANALYTICS_API },
+    access_distribution: { status: "unavailable", reason: NO_ANALYTICS_API },
+    visitor_activity: { status: "unavailable", reason: NO_VISITOR_API },
   },
   settings: {
     profile_view: {

@@ -266,16 +266,19 @@ def authenticate(
     if security.needs_rehash(user.password_hash):
         user.password_hash = security.hash_password(password)
 
-    access_token = security.create_access_token(
-        subject=str(user.id), role=user.role, settings=settings
-    )
-    refresh_plain = _open_session(
+    refresh_plain, session_record = _open_session(
         db,
         user=user,
         settings=settings,
         ip_address=ip_address,
         user_agent=user_agent,
         parent_session_id=None,
+    )
+    access_token = security.create_access_token(
+        subject=str(user.id),
+        role=user.role,
+        session_id=session_record.id,
+        settings=settings,
     )
 
     audit_service.record(
@@ -298,8 +301,8 @@ def _open_session(
     ip_address: str | None,
     user_agent: str | None,
     parent_session_id: int | None,
-) -> str:
-    """Create a session row and return the plaintext refresh token."""
+) -> tuple[str, SessionRecord]:
+    """Create a session row; return the plaintext refresh token and the row."""
     refresh_plain = security.generate_refresh_token()
     record = SessionRecord(
         user_id=user.id,
@@ -314,7 +317,7 @@ def _open_session(
     )
     db.add(record)
     db.flush()
-    return refresh_plain
+    return refresh_plain, record
 
 
 def _revoke_family(db: Session, root: SessionRecord, *, reason: str) -> int:
@@ -402,7 +405,7 @@ def refresh_tokens(
     record.revoked_at = now
     record.revoked_reason = REVOKED_ROTATION
 
-    new_refresh = _open_session(
+    new_refresh, child = _open_session(
         db,
         user=user,
         settings=settings,
@@ -411,7 +414,10 @@ def refresh_tokens(
         parent_session_id=record.id,
     )
     access_token = security.create_access_token(
-        subject=str(user.id), role=user.role, settings=settings
+        subject=str(user.id),
+        role=user.role,
+        session_id=child.id,
+        settings=settings,
     )
     audit_service.record(
         db,
@@ -425,39 +431,112 @@ def refresh_tokens(
     return user, access_token, new_refresh
 
 
+#: Upper bound on the rotation lineage walked per request. An access token
+#: lives for at most ``ACCESS_TOKEN_EXPIRE_MINUTES`` (<= 120), so its session
+#: is only a few rotations behind the newest one. A longer walk fails closed.
+_MAX_LINEAGE_WALK = 64
+
+
+def _lineage(db: Session, session_id: int, *, user_id: int) -> list[SessionRecord]:
+    """``session_id`` and every descendant in its rotation lineage.
+
+    Only rows of ``user_id`` are followed, so a token cannot borrow another
+    user's live session. Returns an empty list if the session is not this
+    user's, or if the walk exceeds ``_MAX_LINEAGE_WALK`` rows.
+    """
+    found: list[SessionRecord] = []
+    frontier = [session_id]
+    seen: set[int] = set()
+    while frontier:
+        current = frontier.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        if len(seen) > _MAX_LINEAGE_WALK:
+            return []
+        row = db.get(SessionRecord, current)
+        if row is None or row.user_id != user_id:
+            continue
+        found.append(row)
+        frontier.extend(
+            db.execute(
+                select(SessionRecord.id).where(
+                    SessionRecord.parent_session_id == current
+                )
+            ).scalars()
+        )
+    return found
+
+
+def access_session_is_live(
+    db: Session, *, session_id: int, user_id: int, now: datetime | None = None
+) -> bool:
+    """True if an access token issued with ``session_id`` may still be used.
+
+    The token stays valid across refresh-token rotation (the rotated session
+    has a live child), and stops working as soon as its lineage has no usable
+    session left: after logout, reuse detection, admin revocation or expiry
+    (finding S2). Fails closed on every uncertainty.
+    """
+    now = now or _utcnow()
+    return any(
+        row.is_usable(now=now) for row in _lineage(db, session_id, user_id=user_id)
+    )
+
+
 def logout(
     db: Session,
     *,
     refresh_token: str,
     settings: Settings,
-    actor_user_id: int | None = None,
+    actor_user_id: int,
+    current_session_id: int | None = None,
     ip_address: str | None = None,
 ) -> bool:
-    """Revoke the presented session server-side (SR-AUTH-10).
+    """Revoke the caller's session server-side (SR-AUTH-10, finding S2).
 
-    Returns True when a live session was revoked. Returns False when the token
-    is unknown or already revoked — logout is idempotent and must not leak
-    whether the token existed.
+    Revokes two things, both owned by ``actor_user_id``:
+
+    * the session of the presented refresh token, and
+    * every live session in the lineage of the access token used for this
+      request (``current_session_id``), so that access token stops working
+      immediately even if the client sent a stale refresh token.
+
+    A refresh token belonging to another user is ignored: one user cannot log
+    another out. Returns True when at least one live session was revoked.
+    Logout is idempotent and does not reveal whether the token existed.
     """
+    now = _utcnow()
     token_hash = security.hash_refresh_token(
         refresh_token, secret_key=settings.secret_key
     )
+    targets: dict[int, SessionRecord] = {}
     record = db.execute(
         select(SessionRecord).where(SessionRecord.refresh_token_hash == token_hash)
     ).scalar_one_or_none()
+    if record is not None and record.user_id == actor_user_id:
+        targets[record.id] = record
+    if current_session_id is not None:
+        for row in _lineage(db, current_session_id, user_id=actor_user_id):
+            targets[row.id] = row
 
-    if record is None or record.revoked_at is not None:
+    revoked_ids = []
+    for row in targets.values():
+        if row.revoked_at is None:
+            row.revoked_at = now
+            row.revoked_reason = REVOKED_LOGOUT
+            revoked_ids.append(row.id)
+    if not revoked_ids:
         return False
 
-    record.revoked_at = _utcnow()
-    record.revoked_reason = REVOKED_LOGOUT
     audit_service.record(
         db,
         action=ACTION_LOGOUT,
         entity_type="session",
-        entity_id=record.id,
-        actor_user_id=actor_user_id or record.user_id,
+        entity_id=min(revoked_ids),
+        actor_user_id=actor_user_id,
         actor_ip=ip_address,
+        after={"revoked_sessions": len(revoked_ids)},
     )
     db.flush()
     return True

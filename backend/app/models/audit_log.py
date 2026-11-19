@@ -37,6 +37,7 @@ ACTION_MEMBER_CREATE = "member.create"
 ACTION_MEMBER_UPDATE = "member.update"
 ACTION_MEMBER_DEACTIVATE = "member.deactivate"
 ACTION_MEMBER_REVOKE = "member.revoke"
+ACTION_INCIDENT_UPDATE = "incident.update"
 
 
 class AuditLog(Base):

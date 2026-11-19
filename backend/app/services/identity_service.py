@@ -34,11 +34,35 @@ def get_member(db: Session, member_id: int) -> FamilyMember:
     return member
 
 
-def list_members(db: Session, *, include_revoked: bool = False) -> list[FamilyMember]:
+def list_members(
+    db: Session,
+    *,
+    include_revoked: bool = False,
+    linked_user_id: int | None = None,
+) -> list[FamilyMember]:
+    """Members ordered by name.
+
+    ``linked_user_id`` restricts the result to records linked to that
+    operator account (a ``member`` role user sees only their own record).
+    """
     stmt = select(FamilyMember).order_by(FamilyMember.full_name)
     if not include_revoked:
         stmt = stmt.where(FamilyMember.status != STATUS_REVOKED)
+    if linked_user_id is not None:
+        stmt = stmt.where(FamilyMember.user_id == linked_user_id)
     return list(db.execute(stmt).scalars())
+
+
+def member_ids_for_user(db: Session, user_id: int) -> list[int]:
+    """Ids of every family-member record linked to an operator account.
+
+    Includes revoked records so a member still sees their own history.
+    """
+    return list(
+        db.execute(
+            select(FamilyMember.id).where(FamilyMember.user_id == user_id)
+        ).scalars()
+    )
 
 
 def create_member(

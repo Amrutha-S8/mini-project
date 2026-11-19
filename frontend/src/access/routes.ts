@@ -72,14 +72,24 @@ export const LOGIN_PATH = "/login";
 
 /** Actions the UI may offer. Each mirrors a backend endpoint's guard. */
 export const ACTIONS = {
-  "members.list": ALL,
-  "members.view": ALL,
+  // Viewers never see member records (finding S5, decision D-3); a member
+  // sees only their own, filtered by the backend.
+  "members.list": ["admin", "member"],
+  "members.view": ["admin", "member"],
   "members.create": ["admin"],
   "members.update": ["admin"],
   "members.deactivate": ["admin"],
   "members.revoke": ["admin"],
   "users.register": ["admin"],
   "profile.view": ALL,
+  // Every role may call these; the backend filters what each role receives
+  // (viewers get no member identities, members only their own records).
+  "events.access": ALL,
+  "events.security": ALL,
+  "dashboard.summary": ALL,
+  "incidents.list": ["admin", "viewer"],
+  "incidents.view": ["admin", "viewer"],
+  "incidents.update": ["admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Action = keyof typeof ACTIONS;

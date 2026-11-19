@@ -84,6 +84,12 @@ test("only admins get mutation controls", () => {
   assert.equal(can(member, "members.list"), true);
 });
 
+test("viewers get no member-record actions (finding S5, decision D-3)", () => {
+  assert.equal(can(viewer, "members.list"), false);
+  assert.equal(can(viewer, "members.view"), false);
+  assert.equal(can(member, "members.view"), true);
+});
+
 test("signed-out users are sent to login with a safe next path", () => {
   assert.deepEqual(resolveRoute("/analytics", null), {
     kind: "redirect",

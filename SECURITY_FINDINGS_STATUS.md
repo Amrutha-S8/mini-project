@@ -11,10 +11,10 @@ runtime evidence from the real application**.
 | ID | Severity | Status |
 |---|---|---|
 | S1 | Critical (real-world use) | Open |
-| S2 | High | **Open, confirmed** |
+| S2 | High | **Fix written (Phase 2), not yet run** |
 | S3 | High (latent) | Open, by design until wiring |
 | S4 | Medium | **Fixed in reference schema**; migration 0004 not applied |
-| S5 | Medium | Open, owner decision |
+| S5 | Medium | **Fix written (Phase 2), not yet run** |
 | S6 | Medium | Open |
 | S7 | Medium | Open (documented residual risk) |
 | S8 | Medium | Open |
@@ -41,6 +41,7 @@ runtime evidence from the real application**.
 - **Fixed:** no. **Regression tests:** none. **Ran:** —.
 - **Remaining risk:** a stolen access token survives logout and reuse detection for up to 15 minutes.
 - **Next action (after the stack runs):** first write failing tests (access token used after logout, after admin revocation, after reuse detection → 401). Then add a session-id claim set at login and refresh, and have `get_current_user` reject tokens whose session is revoked or expired. Re-run all 62 integration tests.
+- **Phase 2 update (2026-11-19, branch `phase-2-backend-apis`):** access tokens now carry a `sid` claim; `get_current_user` rejects a token unless its session lineage still has a usable session (`auth_service.access_session_is_live`). Logout also revokes the lineage of the access token used to call it. Regression tests in `tests/test_api_sessions_rbac_events.py` (logout, rotation, reuse detection, missing `sid`, borrowed `sid`). **Not executed yet:** they need the approved stack and must run on Windows.
 
 ### S3 — AccessEngine trusts caller-supplied facts
 - **Description:** `AccessRequest` carries `approver_is_active_admin`, `recent_attempts` and `now` from the caller (`app/domain/access_engine.py`). The engine is correct for the facts it gets; a wrong caller could pass wrong facts (TEST_RUN finding P6 showed user 999 accepted as admin when the caller said so).
@@ -62,6 +63,7 @@ runtime evidence from the real application**.
 - **Files:** `app/api/v1/members.py`; frontend `src/access/routes.ts` follows the backend.
 - **Fixed:** no. **Tests:** none for viewer/member read restrictions.
 - **Next action:** owner decision; then restrict in the backend (not only the UI) with tests per role.
+- **Phase 2 update (2026-11-19):** owner decisions R-1 and D-3 applied in the backend. `GET /members` and `GET /members/{id}`: admin all, member only their linked record (no admin notes, 404 for others), viewer 403. New event routes hide member identities from viewers. Tests written in `tests/test_api_sessions_rbac_events.py`; **not executed yet** (need the approved stack).
 
 ### S6 — Dependencies not locked or scanned
 - **Description:** `backend/requirements.txt` has version ranges only; no `requirements.lock.txt`; no `pip-audit` or `npm audit` possible here. `frontend/` has no dependencies yet.

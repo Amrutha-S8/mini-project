@@ -11,6 +11,7 @@ from app.api.deps import (
     LoginThrottleDep,
     SettingsDep,
     client_ip,
+    current_session_id,
 )
 from app.core.errors import AuthenticationError, RateLimitedError, ValidationError
 from app.core.logging import get_logger
@@ -142,12 +143,16 @@ def logout(
     request: Request,
     user: CurrentUser,
 ) -> None:
-    """Revoke the session server-side. Idempotent (SR-AUTH-10)."""
+    """Revoke the session server-side. Idempotent (SR-AUTH-10).
+
+    The access token used for this request stops working too (finding S2).
+    """
     auth_service.logout(
         db,
         refresh_token=payload.refresh_token,
         settings=settings,
         actor_user_id=user.id,
+        current_session_id=current_session_id(request),
         ip_address=client_ip(request),
     )
 
