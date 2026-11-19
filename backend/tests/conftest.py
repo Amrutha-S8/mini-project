@@ -135,6 +135,10 @@ def app_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]
         db.commit()
     engine.dispose()
 
-    app = create_app(settings)
-    with TestClient(app) as client:
+    from app.core.tasks import InlineTaskRunner
+
+    application = create_app(settings)
+    # Run notification jobs synchronously so tests can assert on their rows.
+    application.state.task_runner = InlineTaskRunner()
+    with TestClient(application) as client:
         yield client

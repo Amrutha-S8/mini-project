@@ -59,6 +59,53 @@ class Settings(BaseSettings):
     # --- CORS ---
     cors_allowed_origins: str = "http://localhost:5173"
 
+    # --- Suspicious activity monitoring (M13) ---
+    #: Findings at or above this severity notify the homeowner. LOW never does.
+    notify_min_severity: str = "medium"
+    #: Local quiet hours for the informational quiet-hours rule.
+    monitoring_quiet_hours: str = "01:00-05:00"
+    #: Findings with the same key join an open incident within this window.
+    incident_merge_window_minutes: int = Field(default=30, ge=1, le=1440)
+    #: Minimum gap between two notifications about the same incident.
+    notification_cooldown_minutes: int = Field(default=15, ge=1, le=1440)
+
+    # --- Notifications (M20). Secrets live only in .env (SR-STORE-06). ---
+    whatsapp_enabled: bool = False
+    whatsapp_access_token: str = Field(default="", repr=False)
+    whatsapp_phone_number_id: str = ""
+    whatsapp_api_version: str = "v25.0"
+    whatsapp_template_name: str = ""
+    whatsapp_template_language: str = "en"
+    whatsapp_app_secret: str = Field(default="", repr=False)
+    whatsapp_webhook_verify_token: str = Field(default="", repr=False)
+    homeowner_whatsapp_number: str = ""
+    sms_enabled: bool = False
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = Field(default="", repr=False)
+    twilio_from_number: str = ""
+    homeowner_sms_number: str = ""
+    #: Public HTTPS URL of POST /api/v1/notifications/webhooks/twilio, if any.
+    twilio_status_callback_url: str = ""
+    notification_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+
+    @field_validator("notify_min_severity")
+    @classmethod
+    def _known_severity(cls, value: str) -> str:
+        normalised = value.strip().lower()
+        if normalised not in ("low", "medium", "high", "critical"):
+            raise ValueError(
+                "notify_min_severity must be low, medium, high or critical"
+            )
+        return normalised
+
+    @field_validator("monitoring_quiet_hours")
+    @classmethod
+    def _quiet_hours(cls, value: str) -> str:
+        from app.domain.suspicious_activity import parse_quiet_hours
+
+        parse_quiet_hours(value)
+        return value.strip()
+
     @property
     def is_production(self) -> bool:
         return self.app_env.strip().lower() == "production"

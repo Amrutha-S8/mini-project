@@ -66,7 +66,16 @@ function ensureRoleArgs(body: string): string[] | null {
   return [...new Set(roles)].sort();
 }
 
-const ROUTE_MODULES = ["health", "auth", "members", "events", "incidents", "dashboard"];
+const ROUTE_MODULES = [
+  "health",
+  "auth",
+  "members",
+  "events",
+  "incidents",
+  "dashboard",
+  "monitoring",
+  "notifications",
+];
 const ROUTE_FILES = ROUTE_MODULES.map((m) => `api/v1/${m}.py`);
 
 export function backendRoutes(): BackendRoute[] {

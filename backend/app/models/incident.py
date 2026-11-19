@@ -102,6 +102,11 @@ class IncidentRecord(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     resolution_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Migration 0005. An admin has seen the incident. No foreign key because
+    #: SQLite cannot add one to an existing table without rebuilding it (which
+    #: would drop the no-delete trigger); the audit log records the actor too.
+    acknowledged_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    acknowledged_by_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     attack_chain: Mapped[str | None] = mapped_column(Text, nullable=True)
     attack_chain_generated_at: Mapped[datetime | None] = mapped_column(
         UtcDateTime, nullable=True

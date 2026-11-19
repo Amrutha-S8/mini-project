@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.core.clock import utc_now
 from app.core.errors import NotFoundError, ValidationError
-from app.models.audit_log import ACTION_INCIDENT_UPDATE
+from app.models.audit_log import ACTION_INCIDENT_ACKNOWLEDGE, ACTION_INCIDENT_UPDATE
 from app.models.incident import IncidentRecord
 from app.models.user import ROLE_ADMIN, User
 from app.services import audit_service
@@ -37,6 +37,39 @@ def get_incident(db: Session, incident_id: int) -> IncidentRecord:
     incident = db.get(IncidentRecord, incident_id)
     if incident is None:
         raise NotFoundError("Incident not found")
+    return incident
+
+
+def acknowledge_incident(
+    db: Session,
+    incident_id: int,
+    *,
+    actor: User,
+    actor_ip: str | None = None,
+    now: datetime | None = None,
+) -> IncidentRecord:
+    """Record that an admin has seen the incident. Idempotent.
+
+    Acknowledging stops automatic re-notification about this incident; it
+    does not change its status.
+    """
+    if actor.role != ROLE_ADMIN:  # defence in depth; the route requires admin
+        raise ValidationError("only an admin can acknowledge an incident")
+    incident = get_incident(db, incident_id)
+    if incident.acknowledged_at is not None:
+        return incident
+    incident.acknowledged_at = now or utc_now()
+    incident.acknowledged_by_user_id = actor.id
+    db.flush()
+    audit_service.record(
+        db,
+        action=ACTION_INCIDENT_ACKNOWLEDGE,
+        entity_type="incident",
+        entity_id=incident.id,
+        actor_user_id=actor.id,
+        actor_ip=actor_ip,
+        after={"acknowledged_at": incident.acknowledged_at.isoformat()},
+    )
     return incident
 
 

@@ -27,6 +27,7 @@ from app.core.clock import utc_now
 from app.models.access_event import AccessEvent
 from app.models.family_member import FamilyMember
 from app.models.incident import IncidentRecord
+from app.models.incident_detection import IncidentDetection
 from app.models.security_event import SecurityEventRecord
 from app.models.user import ROLE_ADMIN, ROLE_MEMBER, ROLE_VIEWER, User
 from app.services import identity_service
@@ -167,6 +168,31 @@ def list_incidents(
     return list(db.execute(page).scalars())
 
 
+def detections_for(db: Session, incident_id: int) -> list[IncidentDetection]:
+    return list(
+        db.execute(
+            select(IncidentDetection)
+            .where(IncidentDetection.incident_id == incident_id)
+            .order_by(IncidentDetection.id)
+        ).scalars()
+    )
+
+
+def latest_reasons(db: Session, incident_ids: list[int]) -> dict[int, str]:
+    """The newest finding reason per incident, in one query."""
+    if not incident_ids:
+        return {}
+    reasons: dict[int, str] = {}
+    rows = db.execute(
+        select(IncidentDetection.incident_id, IncidentDetection.reason)
+        .where(IncidentDetection.incident_id.in_(incident_ids))
+        .order_by(IncidentDetection.id)
+    )
+    for incident_id, reason in rows:
+        reasons[int(incident_id)] = str(reason)  # later rows overwrite earlier
+    return reasons
+
+
 # --- dashboard -----------------------------------------------------------------
 
 
@@ -202,6 +228,7 @@ def dashboard_summary(
         "access_all_time": _decision_counts(db, audience, since=None),
         "last_access_event_at": None,
         "active_incidents_by_severity": None,
+        "unacknowledged_active_incidents": None,
         "suspicious_events_last_24h": None,
     }
 
@@ -219,6 +246,14 @@ def dashboard_summary(
         for severity, count in rows:
             by_severity[str(severity)] = int(count)
         summary["active_incidents_by_severity"] = by_severity
+        summary["unacknowledged_active_incidents"] = int(
+            db.execute(
+                select(func.count())
+                .select_from(IncidentRecord)
+                .where(IncidentRecord.status.in_(ACTIVE_INCIDENT_STATUSES))
+                .where(IncidentRecord.acknowledged_at.is_(None))
+            ).scalar_one()
+        )
         summary["suspicious_events_last_24h"] = int(
             db.execute(
                 select(func.count())

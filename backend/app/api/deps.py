@@ -7,6 +7,7 @@ never trusted from the token alone (SR-AUTHZ-05).
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Annotated
 
 import jwt
@@ -23,8 +24,10 @@ from app.core.errors import (
 )
 from app.core.rate_limit import LoginThrottle
 from app.core.security import decode_access_token
+from app.core.tasks import TaskRunner
 from app.database.session import get_readonly_session, get_session
 from app.models.user import ROLE_ADMIN, ROLE_MEMBER, ROLE_VIEWER, User
+from app.notifications.transport import HttpTransport
 from app.services import auth_service
 
 #: ``auto_error=False`` so a missing header raises our own 401 envelope rather
@@ -54,6 +57,37 @@ def get_login_throttle(request: Request) -> LoginThrottle:
 
 
 LoginThrottleDep = Annotated[LoginThrottle, Depends(get_login_throttle)]
+
+
+@dataclass(frozen=True)
+class Notifier:
+    """Schedules homeowner notifications without blocking the request."""
+
+    settings: Settings
+    runner: TaskRunner
+    transport: HttpTransport | None
+
+    def incident(self, incident_id: int, trigger_reason: str) -> None:
+        from app.services import notification_service
+
+        self.runner.submit(
+            notification_service.notify_in_background,
+            incident_id,
+            trigger_reason,
+            self.settings,
+            self.transport,
+        )
+
+
+def get_notifier(request: Request) -> Notifier:
+    return Notifier(
+        settings=request.app.state.settings,
+        runner=request.app.state.task_runner,
+        transport=request.app.state.notification_transport,
+    )
+
+
+NotifierDep = Annotated[Notifier, Depends(get_notifier)]
 DbDep = Annotated[Session, Depends(get_session)]
 ReadOnlyDbDep = Annotated[Session, Depends(get_readonly_session)]
 

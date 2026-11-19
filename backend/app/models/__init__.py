@@ -8,6 +8,8 @@ unused table is introduced:
       incidents, incident_evidence,
       workflow_executions                           -> migration 0002 (DD-09)
     retention_extensions                            -> migration 0003 (DD-11)
+    incident_detections, notifications,
+      incidents.acknowledged_*                      -> migration 0005 (M13, M20)
 
 Still to come, each with its owning module:
 
@@ -15,7 +17,6 @@ Still to come, each with its owning module:
     permissions                             -> Day 4  (M07)
     pipeline_logs                           -> Day 6  (M11)
     automation_tasks                        -> Day 12 (M19)
-    notifications                           -> Day 13 (M20)
 
 Columns that will point at those tables (``access_events.permission_id``,
 ``access_events.matched_embedding_id``, ``workflow_executions.automation_task_id``)
@@ -26,6 +27,8 @@ from app.models.access_event import AccessEvent
 from app.models.audit_log import AuditLog
 from app.models.family_member import FamilyMember
 from app.models.incident import IncidentEvidence, IncidentRecord
+from app.models.incident_detection import IncidentDetection
+from app.models.notification import NotificationRecord
 from app.models.retention_extension import RetentionExtensionRecord
 from app.models.security_event import SecurityEventRecord
 from app.models.session import SessionRecord
@@ -37,8 +40,10 @@ __all__ = [
     "AccessEvent",
     "AuditLog",
     "FamilyMember",
+    "IncidentDetection",
     "IncidentEvidence",
     "IncidentRecord",
+    "NotificationRecord",
     "RetentionExtensionRecord",
     "SecurityEventRecord",
     "SessionRecord",

@@ -90,6 +90,15 @@ export const ACTIONS = {
   "incidents.list": ["admin", "viewer"],
   "incidents.view": ["admin", "viewer"],
   "incidents.update": ["admin"],
+  "incidents.acknowledge": ["admin"],
+  "incidents.investigate": ["admin"],
+  "incidents.resolve": ["admin"],
+  "incidents.notifications": ["admin"],
+  "incidents.notify": ["admin"],
+  "notifications.list": ["admin"],
+  "notifications.channels": ["admin"],
+  "notifications.refresh": ["admin"],
+  "monitoring.submit": ["admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Action = keyof typeof ACTIONS;

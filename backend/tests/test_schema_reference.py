@@ -27,15 +27,17 @@ EVENT_TABLES = {
 }
 #: Added by migration 0003 (DD-11); tested in test_retention_extensions.py.
 RETENTION_TABLES = {"retention_extensions"}
-EXPECTED_TABLES = IDENTITY_TABLES | EVENT_TABLES | RETENTION_TABLES
+#: Added by migration 0005 (M13 detections, M20 notifications); tested in
+#: test_monitoring_schema.py.
+MONITORING_TABLES = {"incident_detections", "notifications"}
+EXPECTED_TABLES = IDENTITY_TABLES | EVENT_TABLES | RETENTION_TABLES | MONITORING_TABLES
 
-#: The five tables that must NOT exist yet — each arrives with its module.
+#: The tables that must NOT exist yet — each arrives with its module.
 DEFERRED_TABLES = {
     "face_embeddings",
     "permissions",
     "pipeline_logs",
     "automation_tasks",
-    "notifications",
 }
 
 
